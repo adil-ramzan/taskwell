@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html { scroll-behavior: smooth; }
+html.dark { color-scheme: dark; }
+html:not(.dark) { color-scheme: light; }
+body, body * {
+  transition-property: color, background-color, border-color;
+  transition-duration: 180ms;
+  transition-timing-function: ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, body { animation: none !important; transition: none !important; }
+}
+:focus-visible { outline: 3px solid #2F6FED; outline-offset: 2px; }
