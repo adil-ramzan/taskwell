@@ -26,8 +26,20 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:?Set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:?Set POSTGRES_DB in .env}?schema=public
       AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in .env}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      # Invitation emails (Resend). Empty means no email is sent and the app says so.
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      # Two-factor sign-in secret encryption. Empty means 2FA can't be turned on.
+      TWO_FACTOR_ENCRYPTION_KEY: ${TWO_FACTOR_ENCRYPTION_KEY:-}
     ports:
       - "${APP_PORT:-3000}:3000"
+    volumes:
+      # Uploaded profile pictures; survives rebuilding or recreating the app container.
+      - avatar-data:/app/storage/avatars
+      # Files attached to tasks; likewise kept when the app container is rebuilt.
+      - attachment-data:/app/storage/attachments
 
 volumes:
   db-data:
+  avatar-data:
+  attachment-data:

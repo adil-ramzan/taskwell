@@ -9,11 +9,442 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  name         String
-  email        String   @unique
-  passwordHash String
-  createdAt    DateTime @default(now())
+  id                  String           @id @default(uuid())
+  name                String
+  email               String           @unique
+  passwordHash        String
+  // Raised on every password change. A session issued under an older value is
+  // rejected (see auth.ts), which signs the account out everywhere.
+  sessionVersion      Int              @default(0)
+  // IANA time zone name (e.g. "Asia/Karachi"); null until the user picks one.
+  timeZone            String?
+  // What the avatar shows. avatarKey is a built-in avatar ID (PRESET) or the
+  // server-generated file name of an uploaded image (UPLOAD); never a client path.
+  avatarType          AvatarType       @default(INITIALS)
+  avatarKey           String?
+  // TOTP two-factor sign-in. Secrets are AES-256-GCM encrypted (lib/two-factor.ts).
+  twoFactorSecret     String?
+  twoFactorPending    String?
+  twoFactorEnabledAt  DateTime?
+  recoveryCodes       RecoveryCode[]
+  createdAt           DateTime         @default(now())
+  projects            Project[]
+  teamMemberships     TeamMember[]
+  assignedTasks       Task[]
+  comments            Comment[]
+  activities          Activity[]
+  notifications       Notification[]   @relation("NotificationRecipient")
+  notificationsCaused Notification[]   @relation("NotificationActor")
+  taskReminders       TaskReminder[]
+  labels              Label[]
+  taskTemplates       TaskTemplate[]   @relation("TaskTemplateOwner")
+  timeEntries         TaskTimeEntry[]
+  attachments         TaskAttachment[]
+  templateAssignments TaskTemplate[]   @relation("TaskTemplateAssignee")
+}
+
+enum AvatarType {
+  INITIALS
+  PRESET
+  UPLOAD
+}
+
+// One-time codes for signing in without the authenticator app. Only a hash is stored.
+model RecoveryCode {
+  id        String    @id @default(uuid())
+  userId    String
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+enum TeamRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+model Team {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  memberships TeamMember[]
+  invitations TeamInvitation[]
+  projects    Project[]
+  labels      Label[]
+  templates   TaskTemplate[]
+
+  @@index([createdAt])
+}
+
+model TeamMember {
+  id        String   @id @default(uuid())
+  teamId    String
+  userId    String
+  role      TeamRole @default(MEMBER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([teamId])
+  @@index([userId])
+}
+
+// Declining or cancelling an invitation deletes its row; accepting sets acceptedAt.
+model TeamInvitation {
+  id          String    @id @default(uuid())
+  teamId      String
+  email       String
+  role        TeamRole  @default(MEMBER)
+  token       String    @unique
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  // When the invitation email was last handed to the email provider; null if it never was.
+  emailSentAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  team          Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  notifications Notification[]
+
+  @@index([teamId])
+  @@index([email])
+  @@index([expiresAt])
+}
+
+model Project {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  // Personal project: always set (a CHECK constraint enforces it). Team project:
+  // the creator, or null once that account has been deleted; the team keeps it.
+  ownerId     String?
+  owner       User?    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  // Null for a personal project (only the owner has access). Set for a team
+  // project: the team's members have access and ownerId is the creator.
+  teamId      String?
+  team        Team?    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tasks       Task[]
+
+  @@index([ownerId])
+  @@index([teamId])
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  COMPLETED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model Task {
+  id             String           @id @default(uuid())
+  title          String
+  description    String?
+  status         TaskStatus       @default(TODO)
+  priority       TaskPriority     @default(MEDIUM)
+  // Ownership is derived through the project; deleting a project deletes its tasks.
+  projectId      String
+  project        Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  // Optional, and only for tasks in team projects: a member of the project's team.
+  // Access is still decided by the project, never by the assignee.
+  assigneeId     String?
+  assignee       User?            @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+  // Optional deadline, stored as an instant (UTC). A due date without a time is
+  // the last second of that day in the time zone it was set in (lib/calendar-dates.ts).
+  dueDate        DateTime?
+  // Null for a top-level task. A subtask points at its parent, which is always a
+  // top-level task of the same project (one level only; enforced in lib/tasks.ts).
+  // NoAction: a parent that still has subtasks can't be deleted on its own, while
+  // deleting the whole project (one statement) removes both.
+  parentTaskId   String?
+  parentTask     Task?            @relation("Subtasks", fields: [parentTaskId], references: [id], onDelete: NoAction)
+  subtasks       Task[]           @relation("Subtasks")
+  // Set on a task that was created as the next occurrence of a repeating task:
+  // the occurrence it follows. Unique, so one task can only ever be followed by
+  // one generated occurrence, however often or concurrently generation runs.
+  recurredFromId String?          @unique
+  recurredFrom   Task?            @relation("Occurrences", fields: [recurredFromId], references: [id], onDelete: SetNull)
+  nextOccurrence Task?            @relation("Occurrences")
+  // The repeat schedule, while this task is the series' open occurrence.
+  recurrence     TaskRecurrence?
+  reminders      TaskReminder[]
+  labels         TaskLabel[]
+  timeEntries    TaskTimeEntry[]
+  attachments    TaskAttachment[]
+  // Dependencies in which this task is the one waiting, and the one being waited for.
+  blockedBy      TaskDependency[] @relation("BlockedTask")
+  blocking       TaskDependency[] @relation("BlockerTask")
+  comments       Comment[]
+  activities     Activity[]
+  notifications  Notification[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([projectId, status])
+  @@index([assigneeId])
+  // The calendar reads tasks by a bounded due-date range.
+  @@index([dueDate])
+  // A task's subtasks, and the progress counted from them.
+  @@index([parentTaskId])
+}
+
+// A label (tag) for tasks. It belongs to exactly one workspace: one person's
+// personal projects (ownerId) or one team's projects (teamId); a CHECK
+// constraint enforces that. A task can only carry labels of its own project's
+// workspace (lib/labels.ts). nameKey is the name folded for comparison, so
+// "Bug" and "bug " are the same label within a workspace.
+model Label {
+  id        String   @id @default(uuid())
+  name      String
+  nameKey   String
+  // One of the palette keys in lib/label-rules.ts.
+  color     String
+  ownerId   String?
+  teamId    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner     User?               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  team      Team?               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  tasks     TaskLabel[]
+  templates TaskTemplateLabel[]
+
+  // Rows of the other kind have NULL here, which never collides.
+  @@unique([ownerId, nameKey])
+  @@unique([teamId, nameKey])
+}
+
+// One label on one task. Deleting either deletes the row.
+model TaskLabel {
+  taskId    String
+  labelId   String
+  createdAt DateTime @default(now())
+
+  task  Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  label Label @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, labelId])
+  // "Which tasks have this label": filters, counts and search.
+  @@index([labelId])
+}
+
+// A reusable starting point for a task: the values a new task begins with.
+// Like a label it belongs to exactly one workspace, a person (ownerId) or a
+// team (teamId); a CHECK constraint enforces that, and nameKey (the name folded
+// for comparison) is unique within it. A template is only ever read when a
+// task is created from it: the task keeps no reference to it, so editing or
+// deleting a template never touches a task (lib/task-templates.ts).
+model TaskTemplate {
+  id            String       @id @default(uuid())
+  name          String
+  nameKey       String
+  description   String?
+  status        TaskStatus   @default(TODO)
+  priority      TaskPriority @default(MEDIUM)
+  // Due this many calendar days after the day the task is created (0 = that day),
+  // counted in the creating user's time zone. Null = no due date.
+  dueOffsetDays Int?
+  // Team templates only (a CHECK enforces it): a member of that team. Checked
+  // again against the destination project's team whenever the template is used.
+  assigneeId    String?
+  ownerId       String?
+  teamId        String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  owner    User?                 @relation("TaskTemplateOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  team     Team?                 @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  assignee User?                 @relation("TaskTemplateAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  labels   TaskTemplateLabel[]
+  subtasks TaskTemplateSubtask[]
+
+  // Rows of the other kind have NULL here, which never collides.
+  @@unique([ownerId, nameKey])
+  @@unique([teamId, nameKey])
+  @@index([assigneeId])
+}
+
+// One label on one template: always a label of the template's own workspace.
+// Deleting either deletes the row.
+model TaskTemplateLabel {
+  templateId String
+  labelId    String
+
+  template TaskTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  label    Label        @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([templateId, labelId])
+  @@index([labelId])
+}
+
+// A subtask a task created from the template starts with, in order of position.
+model TaskTemplateSubtask {
+  id         String @id @default(uuid())
+  templateId String
+  position   Int
+  title      String
+
+  template TaskTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, position])
+}
+
+// Time one person spent on one task: a stretch from startedAt to endedAt.
+// While endedAt is null the entry is that person's running timer, and a partial
+// unique index (in the migration; Prisma can't express it) allows one such row
+// per user. durationSeconds is worked out on the server when the entry ends
+// (lib/time-tracking.ts) and is null exactly while it runs. Entries belong to
+// their task: a subtask's time is its own, and nothing ever copies an entry to
+// another task. Deleting the task or the user deletes the entries.
+model TaskTimeEntry {
+  id              String    @id @default(uuid())
+  taskId          String
+  userId          String
+  startedAt       DateTime
+  endedAt         DateTime?
+  durationSeconds Int?
+  note            String?
+  // True for an entry typed in afterwards, false for one made by the timer.
+  manual          Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // A task's entries newest first, and the entries a report's range overlaps.
+  @@index([taskId, startedAt])
+  @@index([userId, startedAt])
+}
+
+// A file attached to a task. The bytes live on the server's disk under
+// storageKey, a random name made by the server (lib/attachment-store.ts);
+// nothing from the upload ever becomes part of a path. name is the cleaned-up
+// file name shown to people, mimeType the type the server worked out from the
+// content, and sha256 the content's hash: one task can't hold the same file
+// twice. An attachment belongs to its task and is never copied to another.
+// Deleting the task deletes the row (the file is removed by the server);
+// deleting the uploader's account keeps the file for the task, without a name.
+model TaskAttachment {
+  id         String   @id @default(uuid())
+  taskId     String
+  uploaderId String?
+  name       String
+  mimeType   String
+  size       Int
+  storageKey String   @unique
+  sha256     String
+  createdAt  DateTime @default(now())
+
+  task     Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploader User? @relation(fields: [uploaderId], references: [id], onDelete: SetNull)
+
+  @@unique([taskId, sha256])
+  @@index([taskId, createdAt])
+  @@index([uploaderId])
+}
+
+// "Remind me N minutes before this task is due." A reminder is personal: it
+// belongs to the user who set it and only that user is notified. remindAt is
+// the due date minus the offset (null while the task has no due date) and is
+// rewritten whenever the due date changes. processedAt is set, in the same
+// transaction that writes the notification, once the reminder has been dealt
+// with (sent, or passed over because the task was completed or out of reach).
+model TaskReminder {
+  id            String    @id @default(uuid())
+  taskId        String
+  userId        String
+  // One of the offsets in lib/reminder-rules.ts (5, 15, 30, 60, 1440).
+  minutesBefore Int
+  // IANA zone a whole-day offset is counted in (the owner's zone when it was set); null = exact 24 hours.
+  timeZone      String?
+  remindAt      DateTime?
+  processedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId, minutesBefore])
+  // The scheduler reads unprocessed reminders by time.
+  @@index([processedAt, remindAt])
+  @@index([userId])
+}
+
+enum RecurrenceFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+// A repeat schedule. It belongs to one task at a time, the series' open
+// occurrence, which is always a top-level task: completing that task creates
+// the next occurrence and moves this row to it (lib/recurrence.ts). Task data
+// (title, project, assignee...) is never copied here. Deleting the task deletes
+// the schedule, which ends the series.
+model TaskRecurrence {
+  id              String              @id @default(uuid())
+  taskId          String              @unique
+  frequency       RecurrenceFrequency
+  // Every `interval` days, weeks or months, counted from startDate.
+  interval        Int                 @default(1)
+  // WEEKLY only: ISO weekdays, 1 = Monday ... 7 = Sunday. Empty otherwise.
+  weekdays        Int[]
+  // MONTHLY only: 1-31; a shorter month uses its last day.
+  monthDay        Int?
+  // Calendar days in timeZone. No occurrence falls before startDate or after endDate.
+  startDate       DateTime            @db.Date
+  endDate         DateTime?           @db.Date
+  // The most occurrences the series may have, the first one included.
+  occurrenceLimit Int?
+  // Occurrences so far, this task included.
+  occurrenceCount Int                 @default(1)
+  // "HH:MM" on timeZone's clock, or null for a due date without a time.
+  dueTime         String?
+  // IANA zone the schedule's days and time are read in.
+  timeZone        String
+  // False once repeating is turned off; the settings are kept.
+  active          Boolean             @default(true)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+// "blocker blocks blocked": the blocked task is waiting for the blocker. Both are
+// tasks of the same project and the edges never form a cycle (lib/dependencies.ts).
+// A planning relationship only: it changes no status and prevents no change.
+// Deleting either task deletes the row.
+model TaskDependency {
+  id            String   @id @default(uuid())
+  blockerTaskId String
+  blockedTaskId String
+  createdAt     DateTime @default(now())
+
+  blocker Task @relation("BlockerTask", fields: [blockerTaskId], references: [id], onDelete: Cascade)
+  blocked Task @relation("BlockedTask", fields: [blockedTaskId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerTaskId, blockedTaskId])
+  @@index([blockedTaskId])
 }
 
 model Subscriber {
@@ -21,4 +452,107 @@ model Subscriber {
   email     String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  content   String
+  taskId    String
+  authorId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  task          Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author        User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  notifications Notification[]
+
+  @@index([taskId, createdAt])
+  @@index([authorId])
+}
+
+enum ActivityType {
+  TASK_CREATED
+  TASK_UPDATED
+  TASK_STATUS_CHANGED
+  TASK_PRIORITY_CHANGED
+  TASK_PROJECT_CHANGED
+  TASK_ASSIGNEE_CHANGED
+  TASK_DUE_DATE_CHANGED
+  SUBTASK_ADDED
+  SUBTASK_REMOVED
+  DEPENDENCY_ADDED
+  DEPENDENCY_REMOVED
+  RECURRENCE_CREATED
+  RECURRENCE_UPDATED
+  RECURRENCE_DISABLED
+  RECURRENCE_GENERATED
+  TASK_LABELS_ADDED
+  TASK_LABELS_REMOVED
+  TIME_ENTRY_ADDED
+  TIME_ENTRY_UPDATED
+  TIME_ENTRY_DELETED
+  ATTACHMENT_ADDED
+  ATTACHMENT_DELETED
+  COMMENT_ADDED
+  COMMENT_UPDATED
+  COMMENT_DELETED
+}
+
+// A task's history. Written only on the server, in the same transaction as the
+// change it records. metadata holds IDs and enum values, never text or secrets.
+model Activity {
+  id        String       @id @default(uuid())
+  type      ActivityType
+  taskId    String
+  // Null once the account that did it has been deleted; the record itself is kept.
+  actorId   String?
+  metadata  Json?
+  createdAt DateTime     @default(now())
+
+  task  Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([taskId, createdAt])
+  @@index([actorId])
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  COMMENT_ADDED
+  COMMENT_MENTION
+  TEAM_INVITATION
+  TASK_REMINDER
+}
+
+// One row per recipient. Holds references only: the text shown (names, task
+// title, team name) is looked up when the list is read, and never a token.
+// Deleting the task, comment or invitation it points at deletes the notification.
+model Notification {
+  id           String           @id @default(uuid())
+  type         NotificationType
+  recipientId  String
+  // Who caused it; null once that account has been deleted.
+  actorId      String?
+  taskId       String?
+  commentId    String?
+  invitationId String?
+  // Reminder notifications only: "<reminder id>:<remindAt ms>". Unique, so one
+  // reminder can never notify twice for the same moment, whatever runs twice.
+  reminderKey  String?          @unique
+  // Null while unread.
+  readAt       DateTime?
+  createdAt    DateTime         @default(now())
+
+  recipient  User            @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  actor      User?           @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  task       Task?           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  comment    Comment?        @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  invitation TeamInvitation? @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, createdAt])
+  @@index([recipientId, readAt])
+  @@index([actorId])
+  @@index([taskId])
+  @@index([commentId])
+  @@index([invitationId])
 }

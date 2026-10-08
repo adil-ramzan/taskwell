@@ -4,12 +4,18 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useState } from "react";
 
+import { NAME_MAX_LENGTH, PASSWORD_MIN_LENGTH, validateName } from "@/lib/account-validation";
+
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function SignupFormContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
+  // Carried through to the login page, so someone who signs up from an invitation
+  // link lands back on that invitation. The login page checks it before using it.
+  const rawCallbackUrl = searchParams.get("callbackUrl");
+  const callbackQuery = rawCallbackUrl ? `&callbackUrl=${encodeURIComponent(rawCallbackUrl)}` : "";
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -22,22 +28,27 @@ function SignupFormContent() {
     const confirmPassword = String(formData.get("confirmPassword") ?? "");
 
     if (!name || !email || !password || !confirmPassword) {
-      router.push("/signup?error=missing-fields");
+      router.push(`/signup?error=missing-fields${callbackQuery}`);
+      return;
+    }
+
+    if (name.length > NAME_MAX_LENGTH || "error" in validateName(name)) {
+      router.push(`/signup?error=name-too-long${callbackQuery}`);
       return;
     }
 
     if (!emailPattern.test(email)) {
-      router.push("/signup?error=invalid-email");
+      router.push(`/signup?error=invalid-email${callbackQuery}`);
       return;
     }
 
-    if (password.length < 8) {
-      router.push("/signup?error=weak-password");
+    if (password.length < PASSWORD_MIN_LENGTH) {
+      router.push(`/signup?error=weak-password${callbackQuery}`);
       return;
     }
 
     if (password !== confirmPassword) {
-      router.push("/signup?error=password-mismatch");
+      router.push(`/signup?error=password-mismatch${callbackQuery}`);
       return;
     }
 
@@ -56,16 +67,21 @@ function SignupFormContent() {
     if (!response.ok) {
       const payload = await response.json().catch(() => null);
 
-      if (payload?.error?.includes("already exists")) {
-        router.push("/signup?error=account-exists");
+      if (typeof payload?.error === "string" && payload.error.startsWith("Name must be")) {
+        router.push(`/signup?error=name-too-long${callbackQuery}`);
         return;
       }
 
-      router.push("/signup?error=unknown");
+      if (payload?.error?.includes("already exists")) {
+        router.push(`/signup?error=account-exists${callbackQuery}`);
+        return;
+      }
+
+      router.push(`/signup?error=unknown${callbackQuery}`);
       return;
     }
 
-    router.push("/login?success=account-created");
+    router.push(`/login?success=account-created${callbackQuery}`);
   }
 
   return (
@@ -82,6 +98,12 @@ function SignupFormContent() {
           </p>
         )}
 
+        {error === "name-too-long" && (
+          <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            Name must be {NAME_MAX_LENGTH} characters or fewer.
+          </p>
+        )}
+
         {error === "invalid-email" && (
           <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
             Enter a valid email address.
@@ -90,7 +112,7 @@ function SignupFormContent() {
 
         {error === "weak-password" && (
           <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            Password must be at least 8 characters long.
+            Password must be at least {PASSWORD_MIN_LENGTH} characters long.
           </p>
         )}
 
@@ -182,7 +204,10 @@ function SignupFormContent() {
 
         <p className="mt-6 text-center text-sm text-muted">
           Already have an account? {" "}
-          <Link href="/login" className="font-medium text-brand underline-offset-2 hover:underline">
+          <Link
+            href={rawCallbackUrl ? `/login?callbackUrl=${encodeURIComponent(rawCallbackUrl)}` : "/login"}
+            className="font-medium text-brand underline-offset-2 hover:underline"
+          >
             Log in
           </Link>
         </p>

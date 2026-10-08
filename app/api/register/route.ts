@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 
-import { createUser } from "@/lib/users";
+import { PASSWORD_MIN_LENGTH, validateName } from "@/lib/account-validation";
+import { createUser, describeError } from "@/lib/users";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -29,14 +30,18 @@ export async function POST(request: Request) {
     email?: unknown;
     password?: unknown;
   };
-  const name = typeof payload.name === "string" ? payload.name.trim() : "";
+  const validName = validateName(payload.name);
+  const name = "error" in validName ? "" : validName.data;
   const email =
     typeof payload.email === "string" ? payload.email.trim().toLowerCase() : "";
   const password = typeof payload.password === "string" ? payload.password : "";
 
   if (!name || !email || !password) {
+    // A name that is present but too long gets its own message; the limit is shared with Settings.
+    const tooLong = "error" in validName && typeof payload.name === "string" && payload.name.trim() !== "";
+
     return NextResponse.json(
-      { error: "Please complete all required fields." },
+      { error: tooLong ? validName.error : "Please complete all required fields." },
       { status: 400 },
     );
   }
@@ -48,9 +53,9 @@ export async function POST(request: Request) {
     );
   }
 
-  if (password.length < 8) {
+  if (password.length < PASSWORD_MIN_LENGTH) {
     return NextResponse.json(
-      { error: "Password must be at least 8 characters long." },
+      { error: `Password must be at least ${PASSWORD_MIN_LENGTH} characters long.` },
       { status: 400 },
     );
   }
@@ -80,11 +85,25 @@ export async function POST(request: Request) {
       );
     }
 
-    console.error("User registration could not be completed.");
+    // Log the underlying cause (e.g. Prisma P1001 when the database is unreachable).
+    // Never log the request body: it contains the password.
+    console.error("[register] User registration could not be completed:", describeError(error));
+
+    const databaseUnavailable =
+      error instanceof Prisma.PrismaClientInitializationError ||
+      (error instanceof Prisma.PrismaClientKnownRequestError &&
+        ["P1001", "P1002", "P1017"].includes(error.code));
+
+    if (databaseUnavailable) {
+      return NextResponse.json(
+        { error: "Unable to create your account right now." },
+        { status: 503 },
+      );
+    }
 
     return NextResponse.json(
       { error: "Unable to create your account right now." },
-      { status: 503 },
+      { status: 500 },
     );
   }
 }

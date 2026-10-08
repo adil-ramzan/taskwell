@@ -1,8 +1,16 @@
 "use client";
 
+import { Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 
-export default function ThemeToggle() {
+interface ThemeToggleProps {
+  /** "switch" renders a labelled "Dark mode" row with a switch, for the dashboard sidebar. */
+  variant?: "icon" | "switch";
+  /** Row classes for the switch variant. */
+  className?: string;
+}
+
+export default function ThemeToggle({ variant = "icon", className = "" }: ThemeToggleProps) {
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
@@ -21,6 +29,21 @@ export default function ThemeToggle() {
     }
   }
 
+  if (variant === "switch") {
+    return (
+      <button type="button" role="switch" aria-checked={isDark} onClick={toggleTheme} className={className}>
+        <Moon aria-hidden="true" className="h-5 w-5 shrink-0" />
+        Dark mode
+        <span
+          aria-hidden="true"
+          className="ml-auto inline-flex h-5 w-9 shrink-0 items-center rounded-full bg-ink/15 p-0.5 dark:bg-brand"
+        >
+          <span className="h-4 w-4 rounded-full bg-white shadow-sm transition-transform dark:translate-x-4 motion-reduce:transition-none" />
+        </span>
+      </button>
+    );
+  }
+
   return (
     <button
       type="button"
@@ -28,31 +51,8 @@ export default function ThemeToggle() {
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
       className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-ink/15 bg-white text-ink transition-colors hover:border-brand hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 dark:border-white/15 dark:bg-dark-surface dark:text-slate-100 dark:hover:border-brand dark:hover:text-brand dark:focus-visible:ring-offset-dark-background motion-reduce:transition-none"
     >
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="h-5 w-5 dark:hidden"
-      >
-        <path d="M20.2 15.3A8.5 8.5 0 0 1 8.7 3.8 8.5 8.5 0 1 0 20.2 15.3Z" />
-      </svg>
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="hidden h-5 w-5 dark:block"
-      >
-        <circle cx="12" cy="12" r="4" />
-        <path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" />
-      </svg>
+      <Moon aria-hidden="true" className="h-5 w-5 dark:hidden" />
+      <Sun aria-hidden="true" className="hidden h-5 w-5 dark:block" />
     </button>
   );
 }

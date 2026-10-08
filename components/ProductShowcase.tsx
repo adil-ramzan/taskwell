@@ -7,7 +7,7 @@ export default function ProductShowcase() {
     <section className="py-20">
       <div className="mx-auto max-w-6xl px-5">
         <div className="mx-auto max-w-3xl text-center">
-          <p className="text-sm font-semibold uppercase tracking-[0.12em] text-brand">
+          <p className="text-sm font-semibold uppercase tracking-[0.12em] text-brand-dark dark:text-blue-300">
             {productShowcase.eyebrow}
           </p>
 
@@ -56,13 +56,13 @@ export default function ProductShowcase() {
                   <div className="mt-3 space-y-2 text-sm text-muted dark:text-dark-muted">
                     <div className="flex items-center justify-between">
                       <span>Review copy</span>
-                      <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
+                      <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand-dark dark:text-blue-200">
                         2h
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span>QA pass</span>
-                      <span className="rounded-full bg-accent/20 px-2 py-0.5 text-xs font-medium text-ink dark:text-slate-900">
+                      <span className="rounded-full bg-accent/20 px-2 py-0.5 text-xs font-medium text-ink dark:text-amber-200">
                         Due
                       </span>
                     </div>
@@ -97,7 +97,7 @@ export default function ProductShowcase() {
                     <p className="font-medium text-ink dark:text-slate-100">Update pricing page</p>
                     <p className="text-sm text-muted dark:text-dark-muted">Owner: Eli</p>
                   </div>
-                  <span className="rounded-lg bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand">
+                  <span className="rounded-lg bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand-dark dark:text-blue-200">
                     Ready
                   </span>
                 </div>
@@ -107,7 +107,7 @@ export default function ProductShowcase() {
                     <p className="font-medium text-ink dark:text-slate-100">QA checklist</p>
                     <p className="text-sm text-muted dark:text-dark-muted">Owner: Nina</p>
                   </div>
-                    <span className="rounded-lg bg-accent/20 px-2.5 py-1 text-xs font-semibold text-ink dark:text-slate-900">
+                    <span className="rounded-lg bg-accent/20 px-2.5 py-1 text-xs font-semibold text-ink dark:text-amber-200">
                     Due today
                   </span>
                 </div>

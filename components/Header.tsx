@@ -7,7 +7,8 @@ import ThemeToggle from "./ThemeToggle";
 
 export default async function Header() {
   const session = await getServerSession(authOptions);
-  const isLoggedIn = !!session?.user;
+  // An unverifiable session (database down) still shows Dashboard / Log out rather than a misleading signed-out header.
+  const isLoggedIn = !!session?.user || !!session?.unavailable;
 
   return (
     <header className="border-b border-ink/10 bg-paper transition-colors duration-200 dark:border-white/10 dark:bg-dark-background motion-reduce:transition-none">
@@ -24,7 +25,7 @@ export default async function Header() {
             <li>
               <a
                 href="#pricing"
-                className="transition-colors hover:text-ink focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 dark:hover:text-slate-50 dark:focus:ring-offset-dark-background"
+                className="inline-flex min-h-6 items-center transition-colors hover:text-ink focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 dark:hover:text-slate-50 dark:focus:ring-offset-dark-background"
               >
                 Pricing
               </a>
@@ -33,7 +34,7 @@ export default async function Header() {
             <li>
               <a
                 href="#faq"
-                className="transition-colors hover:text-ink focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 dark:hover:text-slate-50 dark:focus:ring-offset-dark-background"
+                className="inline-flex min-h-6 items-center transition-colors hover:text-ink focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 dark:hover:text-slate-50 dark:focus:ring-offset-dark-background"
               >
                 FAQ
               </a>
@@ -44,7 +45,7 @@ export default async function Header() {
                 <li>
                   <a
                     href="/dashboard"
-                    className="transition-colors hover:text-ink focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 dark:hover:text-slate-50 dark:focus:ring-offset-dark-background"
+                    className="inline-flex min-h-6 items-center transition-colors hover:text-ink focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 dark:hover:text-slate-50 dark:focus:ring-offset-dark-background"
                   >
                     Dashboard
                   </a>
@@ -59,7 +60,7 @@ export default async function Header() {
                 <li>
                   <a
                     href="/login"
-                    className="transition-colors hover:text-ink focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 dark:hover:text-slate-50 dark:focus:ring-offset-dark-background"
+                    className="inline-flex min-h-6 items-center transition-colors hover:text-ink focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 dark:hover:text-slate-50 dark:focus:ring-offset-dark-background"
                   >
                     Log in
                   </a>

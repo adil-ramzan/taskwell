@@ -2,7 +2,7 @@ export default function Problem() {
   return (
     <section className="py-20">
       <div className="mx-auto max-w-6xl px-5">
-        <p className="text-sm font-semibold uppercase tracking-[0.12em] text-brand">
+        <p className="text-sm font-semibold uppercase tracking-[0.12em] text-brand-dark dark:text-blue-300">
           The problem
         </p>
 

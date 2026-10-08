@@ -109,7 +109,7 @@ export default function SignupForm({ cta }: SignupFormProps) {
           autoComplete="email"
           aria-invalid={status === "error" ? "true" : "false"}
           aria-describedby={error ? "signup-email-error" : undefined}
-          className="w-full rounded-lg border border-ink/20 bg-white px-4 py-3 text-ink outline-none transition placeholder:text-muted/80 focus:border-brand focus:ring-2 focus:ring-brand/20 dark:border-white/15 dark:bg-dark-surface dark:text-slate-50 dark:placeholder:text-dark-muted"
+          className="w-full rounded-lg border border-ink/20 bg-white px-4 py-3 text-ink outline-none transition placeholder:text-muted focus:border-brand focus:ring-2 focus:ring-brand/20 dark:border-white/15 dark:bg-dark-surface dark:text-slate-50 dark:placeholder:text-dark-muted"
         />
 
         {error && (

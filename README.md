@@ -1,253 +1,209 @@
-# Taskwell Application Guide
+# Taskwell
 
-Taskwell is a responsive SaaS marketing site for a team task-management concept. It includes a database-backed mailing-list signup, account registration and login, a protected dashboard placeholder, a persisted light/dark theme, and a marketing homepage. The task-board shown on the homepage and the dashboard are presentation examples; task management itself is not yet implemented.
+Taskwell is a team task-management web app: projects, tasks, a Kanban board, a calendar, reports, teams and in-app notifications, behind a marketing homepage with a mailing-list signup. It is a single Next.js application backed by PostgreSQL.
+
+The dashboard is documented in depth (data model, every API endpoint, access rules, UI conventions) in [DASHBOARD.md](DASHBOARD.md). This file covers what the project is and how to run it.
 
 ## Contents
 
-- [Product overview](#product-overview)
-- [Homepage and site map](#homepage-and-site-map)
-- [Application behavior](#application-behavior)
-- [Architecture](#architecture)
-- [Database](#database)
-- [Configuration](#configuration)
-- [Run locally](#run-locally)
+- [Features](#features)
+- [Tech stack](#tech-stack)
+- [Project structure](#project-structure)
+- [Getting started](#getting-started)
+- [Environment variables](#environment-variables)
+- [Database and migrations](#database-and-migrations)
+- [Development commands](#development-commands)
+- [Production build](#production-build)
 - [Run with Docker](#run-with-docker)
-- [API reference](#api-reference)
-- [Validation and troubleshooting](#validation-and-troubleshooting)
-- [Current limitations and next steps](#current-limitations-and-next-steps)
+- [File storage](#file-storage)
+- [Security notes](#security-notes)
+- [Current limitations](#current-limitations)
 
-## Product overview
+## Features
 
-The homepage introduces Taskwell as a shared work board intended to reduce status meetings and make ownership and deadlines easier to see. It contains a hero signup form, social proof, problem/benefit sections, an illustrative product-board mockup, feature descriptions, testimonials, pricing, FAQs, and calls to action.
+**Workspace**
 
-The app also provides credential-based account registration and login using NextAuth v4. A signed-in user can visit a protected dashboard placeholder. Mailing-list subscribers and application users are separate database records and separate signup flows.
+- **Projects**: personal projects, or projects shared with a team.
+- **Tasks**: status, priority, assignee, due date and time, description; list, Kanban board (drag and drop, or a keyboard alternative) and "My tasks" views with filters and pagination.
+- **Subtasks and dependencies**: one level of subtasks with progress; "blocked by / blocks" links with cycle prevention.
+- **Labels**: colored labels per personal or team workspace, with any/all filtering.
+- **Recurring tasks**: daily, weekly or monthly schedules; the next occurrence is created when the current one is completed.
+- **Reminders**: personal reminders before a due date, delivered as in-app notifications.
+- **Task templates**: reusable starting points, including labels, a due-date offset and subtasks.
+- **Time tracking**: a start/stop timer (one per person) and manual entries, with totals per task.
+- **Attachments**: files on tasks (images, PDF, text, Office documents, ZIP; up to 10 MB each), stored on the server and served only after an access check.
+- **Comments and activity**: comments with @mentions, and a history of every change to a task.
 
-### Technology
+**Overview and planning**
 
-- Next.js 14 App Router and React 18
-- TypeScript with strict checking
-- Tailwind CSS v3, with project color/font tokens
-- Bricolage Grotesque and Inter via `next/font`
-- NextAuth v4 Credentials provider with JWT sessions
-- Prisma 6 and PostgreSQL
-- bcryptjs password hashing
-- Docker Compose for an optional PostgreSQL and app container setup
+- **Dashboard**: task statistics, monthly activity, status and priority distribution, project progress, a review list.
+- **Calendar**: month, week, day and agenda views of tasks by due date.
+- **Reports**: figures and breakdowns for a date range and filters, time tracked, and CSV export.
+- **Command palette** (Ctrl/Cmd+K): jump to pages, create tasks and projects, search tasks, projects and teams.
 
-### Visual system
+**Teams and accounts**
 
-The existing identity uses Bricolage Grotesque for display text and Inter for body text. Tailwind tokens are `ink` (`#14213D`), `paper` (`#FAFAF7`), `brand` (`#2F6FED`), `brand-dark` (`#1E4FB8`), `accent` (`#F2A93B`), and `muted` (`#5B6475`). Dark mode uses the `dark` class with `dark-background` (`#0F172A`), `dark-surface` (`#172033`), and `dark-muted` (`#A8B0BF`). Global styles provide focus-visible outlines, color transitions, and reduced-motion handling.
+- **Teams**: owner, admin and member roles; invitations by link and, optionally, by email.
+- **Notifications**: in-app notifications for assignments, comments, mentions, invitations and reminders.
+- **Accounts**: email and password sign-in, profile picture, time zone, password change, "sign out other devices", optional two-factor sign-in (TOTP) with recovery codes, account deletion.
+- **Light and dark themes**, responsive from phones to desktops, keyboard accessible.
 
-## Homepage and site map
+**Marketing site**
 
-The homepage is assembled in `app/page.tsx` in this order:
+- A homepage with a mailing-list signup stored in the database (no confirmation email is sent).
 
-1. `Header`
-2. `Hero` with `SignupForm`
-3. `SocialProof`
-4. `Results` with a live subscriber count and safe fallback
-5. `Problem`
-6. `Benefits`
-7. `ProductShowcase`
-8. `HowItWorks`
-9. `Features`
-10. `Testimonials`
-11. `Pricing`
-12. `Faq`
-13. `FinalCta`
-14. `Footer`
-15. `StickyCta`
+## Tech stack
 
-The header links to pricing and FAQ, and exposes login/signup links when logged out or Dashboard/Log out controls when logged in. The theme toggle is available at every viewport; the header navigation is hidden on mobile, where no replacement menu is provided. On small screens, the sticky signup CTA appears after scrolling down the page.
-
-### Other routes
-
-| Route | Purpose |
+| Area | Technology |
 | --- | --- |
-| `/` | Marketing homepage |
-| `/signup` | Create a Taskwell account |
-| `/login` | Sign in with email and password |
-| `/dashboard` | Protected account/dashboard placeholder |
-| `/api/subscribe` | Add a mailing-list subscriber |
-| `/api/register` | Register an application user |
-| `/api/auth/[...nextauth]` | NextAuth sign-in, session, and sign-out handlers |
+| Framework | Next.js 14 (App Router), React 18 |
+| Language | TypeScript (strict) |
+| Styling | Tailwind CSS 3, `lucide-react` icons, Bricolage Grotesque and Inter via `next/font` |
+| Database | PostgreSQL 16, Prisma 6 |
+| Authentication | NextAuth v4 (Credentials provider, JWT sessions), bcryptjs |
+| Images | sharp (profile pictures) |
+| Email (optional) | Resend, for team invitation emails |
+| Containers | Docker and Docker Compose |
 
-## Application behavior
+There is no separate backend service: API routes under `app/api/` and server-only modules under `lib/` talk to the database through Prisma.
 
-### Marketing signup
+## Project structure
 
-The homepage form checks for an empty or malformed email in the browser, then posts the normalized address to `/api/subscribe`. While the request is in progress, the button is disabled and reads “Joining...”. A successful response displays the API message; errors are shown next to the input and the form can be retried. The input uses an accessible label, `aria-invalid`, `aria-describedby`, and an alert region for errors.
+| Path | Contents |
+| --- | --- |
+| `app/` | Pages (`/`, `/login`, `/signup`, `/dashboard/...`) and API routes (`app/api/...`) |
+| `components/` | Marketing components; `components/dashboard/` holds the dashboard UI |
+| `lib/` | Server-side data layer, access rules and shared validation |
+| `prisma/` | `schema.prisma` and the SQL migrations |
+| `auth.ts`, `middleware.ts` | NextAuth configuration and the `/dashboard` route guard |
+| `instrumentation.ts` | Starts the reminder scheduler with the server |
+| `Dockerfile`, `docker-compose.yml` | Container image and the app + database setup |
 
-The API writes to the `Subscriber` table. It does not send a confirmation email. The success text explicitly says confirmation email is not configured.
+## Getting started
 
-### Results count
-
-`Results` is a Server Component. It queries the total number of mailing-list subscribers and displays the count when greater than zero. If there are no subscribers or the database is unavailable, it shows the static fallback from `lib/content.ts`. Only an aggregate count is rendered; subscriber addresses are not exposed.
-
-### Account registration and login
-
-The `/signup` page collects a name, email, password, and confirmation. The page checks required fields, email shape, an eight-character minimum, and matching passwords before calling `/api/register`. The API normalizes email, hashes passwords with bcryptjs, and stores users in the Prisma `User` table. Duplicate account creation is rejected.
-
-The `/login` page authenticates through the NextAuth Credentials provider. Sessions use JWTs. Middleware protects `/dashboard`, and the page performs its own server-side session check as well. Logging out posts to the NextAuth sign-out endpoint.
-
-### Light and dark theme
-
-The selected theme is stored in browser `localStorage` under `taskwell-theme` as `light` or `dark`. With no saved selection, the app follows `prefers-color-scheme`. A small inline script in the root document head applies the theme class before page paint to reduce theme flash. The toggle is a keyboard-operable button with an accessible name and inline SVG icon. Color transitions are disabled when reduced motion is requested.
-
-### Static marketing content
-
-Marketing copy and arrays for social proof, benefits, steps, feature descriptions, testimonials, pricing, FAQ, and CTA text live in `lib/content.ts`. These values are not read from the database or a CMS. The product-board mockup and dashboard are illustrative, not connected to live Taskwell task data.
-
-## Architecture
-
-The homepage, header, and marketing sections are Server Components by default. `SignupForm`, `StickyCta`, and `ThemeToggle` are Client Components because they require browser state, event handlers, or effects. Database helpers import `server-only`; database credentials and Prisma calls stay on the server.
-
-```text
-app/page.tsx
-	-> Header and marketing sections
-	-> Results -> lib/subscribers.ts -> lib/prisma.ts -> PostgreSQL
-	-> SignupForm -> POST /api/subscribe -> Subscriber table
-
-/signup -> POST /api/register -> lib/users.ts -> User table
-/login -> NextAuth Credentials -> lib/users.ts -> User table
-/dashboard -> authenticated server-rendered placeholder
-```
-
-The root layout defines metadata, fonts, global styles, and the pre-paint theme initializer. Tailwind uses class-based dark mode and the existing tokens in `tailwind.config.ts`.
-
-## Database
-
-PostgreSQL is the only configured database. Prisma models are in `prisma/schema.prisma`:
-
-| Model | Fields | Use |
-| --- | --- | --- |
-| `User` | `id`, `name`, unique `email`, `passwordHash`, `createdAt` | Account registration and credentials login |
-| `Subscriber` | `id`, unique `email`, `createdAt`, `updatedAt` | Homepage mailing-list signup |
-
-The checked-in migrations create the `User` table first and then the `Subscriber` table. Email addresses are trimmed and lowercased before writes. Database uniqueness constraints are authoritative for duplicate handling; the subscribe API maps Prisma unique-constraint errors to HTTP `409`.
-
-For development, `npm run db:migrate` applies migrations and can create a new migration when the schema changes. For an already-built deployment, `npm run db:deploy` applies checked-in migrations without creating new ones. Prisma Client is generated by the package `postinstall` script and in the Docker build.
-
-## Configuration
-
-Copy `.env.example` to `.env` and supply values for the environment you use. The checked-in example contains blank database/auth secrets; do not commit a populated `.env` file.
-
-| Variable | Required for | Description |
-| --- | --- | --- |
-| `DATABASE_URL` | Prisma/local app | PostgreSQL connection URL used by Prisma. For a host-run app, the host must be able to reach the database. |
-| `AUTH_SECRET` | NextAuth | Secret used to sign/encrypt authentication tokens. Generate and store a private value. |
-| `NEXTAUTH_URL` | Auth deployments | Canonical application URL; use the actual deployed origin in production. |
-| `POSTGRES_USER` | Docker Compose database | User to initialize the Postgres container with. |
-| `POSTGRES_PASSWORD` | Docker Compose database | Password for that database user. |
-| `POSTGRES_DB` | Docker Compose database | Database name initialized by the container. |
-| `APP_PORT` | Optional Docker Compose app | Host port mapped to the app container; defaults to `3000`. |
-
-Docker Compose builds the app’s connection URL from the three `POSTGRES_*` values and connects to the service named `db`. For a local Next.js process connecting to that container, set `DATABASE_URL` to a PostgreSQL URL whose host is `localhost` and port is `5432`.
-
-Generate a private auth secret with `openssl rand -base64 32`, then put the result in your local environment file or deployment secret store. Do not put generated secrets in documentation, source control, or client-side code.
-
-## Run locally
-
-Requirements: Node.js, npm, and a PostgreSQL database reachable from the machine.
-
-1. Install dependencies: `npm install`.
-2. Copy `.env.example` to `.env` and configure `DATABASE_URL`, `AUTH_SECRET`, and `NEXTAUTH_URL`.
-3. Apply the schema: `npm run db:migrate`.
-4. Start the development server: `npm run dev`.
-5. Open `http://localhost:3000`.
-
-Useful commands:
+Requirements: Node.js 18.18 or newer (developed on Node 22), npm, and PostgreSQL 16 (the Docker Compose file provides one).
 
 ```bash
-npm run dev          # development server
-npm run build        # optimized production build
-npm run start        # serve the production build
-npm run lint         # Next.js ESLint checks
-npx tsc --noEmit     # TypeScript check
-npm run db:migrate   # development migration workflow
-npm run db:deploy    # apply existing migrations
-npx prisma generate  # regenerate Prisma Client
-```
+# 1. Install dependencies (also generates the Prisma client)
+npm install
 
-For production, set environment variables in the hosting platform, run `npm run db:deploy` as a deployment step, then build and start the app. Never expose `DATABASE_URL` to client-side code.
+# 2. Create your environment file and fill it in (see the next section)
+cp .env.example .env
 
-## Run with Docker
-
-1. Copy `.env.example` to `.env`.
-2. Set `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, and `AUTH_SECRET`. Set `NEXTAUTH_URL` if the app will not use the default local URL.
-3. Build and start the database and app:
-
-```bash
-docker compose up --build
-```
-
-The app is served at `http://localhost:3000` by default; Postgres is exposed on port `5432`. The app waits for the database health check and runs `prisma migrate deploy` on startup. The named `db-data` volume persists Postgres data across container restarts.
-
-To start only the database and run Next.js on the host, also set a host-reachable `DATABASE_URL` in `.env`, then run:
-
-```bash
+# 3. Start a database (skip if you already have PostgreSQL running)
 docker compose up -d db
-npm run db:migrate
+
+# 4. Create the tables
+npm run db:deploy
+
+# 5. Start the app
 npm run dev
 ```
 
-Stop Compose with `docker compose down`. This preserves the named database volume. Removing the volume deletes the local database data.
+Open http://localhost:3000, create an account at `/signup`, and sign in.
 
-## API reference
+Run only one `next dev` per project folder, and restart it after any change to `prisma/schema.prisma`.
 
-### `POST /api/subscribe`
+## Environment variables
 
-Request JSON:
+Copy `.env.example` to `.env` and set the values. `.env` is ignored by Git; never commit it.
 
-```json
-{ "email": "user@example.com" }
+| Variable | Required | Description |
+| --- | --- | --- |
+| `DATABASE_URL` | Yes | PostgreSQL connection URL used by Prisma, e.g. `postgresql://USER:PASSWORD@localhost:5432/DBNAME?schema=public`. |
+| `AUTH_SECRET` | Yes | Secret that signs session tokens. Generate one with `openssl rand -base64 32`. |
+| `NEXTAUTH_URL` | Yes | The app's public URL, e.g. `http://localhost:3000`. Links in invitation emails are built from it. |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | For Docker Compose | Credentials and database name for the Compose `db` service. They must match `DATABASE_URL` when the app runs on the host. |
+| `TWO_FACTOR_ENCRYPTION_KEY` | For 2FA | 32 random bytes, base64 or hex (`openssl rand -base64 32`), used to encrypt authenticator secrets. Without it two-factor sign-in can't be turned on. Don't change it once accounts use 2FA. |
+| `RESEND_API_KEY` | Optional | Resend API key for invitation emails. Without it invitations still work through their link, and the app says no email was sent. |
+| `EMAIL_FROM` | Optional | Sender address on a domain verified in Resend, e.g. `Taskwell <invites@example.com>`. |
+| `APP_PORT` | Optional | Host port for the Compose app container (default `3000`). |
+| `REMINDER_POLL_MS` | Optional | How often the server looks for due reminders, in milliseconds (default `20000`, minimum `1000`). |
+| `REMINDER_SCHEDULER` | Optional | `off` runs a server process without the reminder timer. |
+
+All of these are read on the server only; none is exposed to the browser.
+
+## Database and migrations
+
+The schema is in `prisma/schema.prisma` and the migrations in `prisma/migrations/`. They are plain SQL and only ever add to the schema.
+
+```bash
+npm run db:deploy            # apply the checked-in migrations (setup and production)
+npm run db:migrate           # development: apply migrations and create a new one after a schema change
+npx prisma migrate status    # show which migrations are applied
+npx prisma generate          # regenerate the Prisma client
+npx prisma validate          # validate the schema
 ```
 
-Email is trimmed, lowercased, checked for presence, limited to 254 characters, and validated on the server. Responses:
+Use `db:deploy` for an existing database: it applies pending migrations and never resets data.
 
-| Status | Meaning |
-| --- | --- |
-| `201` | Subscriber stored; response includes a truthful success message (no email was sent). |
-| `400` | Malformed JSON, missing/empty email, wrong email type, or invalid email. |
-| `409` | Email is already subscribed. |
-| `503` | Database or unexpected persistence failure; response does not reveal internal details. |
+## Development commands
 
-Response bodies use `{ "success": boolean, "message": string }`.
+```bash
+npm run dev          # development server on http://localhost:3000
+npm run lint         # ESLint (next/core-web-vitals)
+npx tsc --noEmit     # TypeScript check
+npm run build        # production build (also type-checks)
+npm run start        # serve the production build
+```
 
-### `POST /api/register`
+The repository has no test command; the checks above are what `npm` runs.
 
-Accepts `name`, `email`, and `password`, validates required fields and email shape, hashes the password, and creates a `User`. It returns `201` on success and `400` for invalid input or registration errors. The interactive `/signup` page additionally enforces an eight-character password and matching confirmation before calling the endpoint.
+## Production build
 
-### NextAuth routes
+```bash
+npm ci
+npm run db:deploy    # apply migrations to the production database
+npm run build
+npm run start        # serves on port 3000 (set PORT to change it)
+```
 
-`/api/auth/[...nextauth]` is the NextAuth v4 route handler for credential sign-in, session operations, and sign-out. The configured sign-in page is `/login`.
+Set the environment variables in your hosting platform's secret store rather than in a file, use the real public origin for `NEXTAUTH_URL`, serve the app over HTTPS, and keep `storage/` on a persistent disk (see [File storage](#file-storage)).
 
-## Validation and troubleshooting
+## Run with Docker
 
-- `npm run build`: production compile, type validation, static generation, and route output.
-- `npm run lint`: ESLint using `next/core-web-vitals`.
-- `npx tsc --noEmit`: standalone TypeScript check.
-- `npx prisma validate`: validate the Prisma schema; Prisma needs `DATABASE_URL` defined for validation.
-- `npx prisma migrate status`: inspect applied/pending migrations against a reachable database.
-- There is no dedicated automated unit or end-to-end test command configured in `package.json` yet.
+```bash
+cp .env.example .env     # set POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB and AUTH_SECRET
+docker compose up --build
+```
 
-Common issues:
+The app is served at http://localhost:3000 (change the host port with `APP_PORT`) and PostgreSQL on port 5432. The app container waits for the database, runs `prisma migrate deploy`, then starts. Inside Compose the app builds its own `DATABASE_URL` from the `POSTGRES_*` values.
 
-- **Prisma cannot connect:** verify `DATABASE_URL`, database availability, host/port reachability, and that migrations have been applied.
-- **Compose asks for missing variables:** populate the required values in `.env`; the Compose file intentionally has no default database password.
-- **NextAuth reports `NO_SECRET`:** set `AUTH_SECRET` in the server environment.
-- **Signup returns `503`:** the API is reachable, but persistence failed. Check server logs and database connectivity; internal database errors are intentionally not sent to the browser.
-- **Subscriber count fallback appears:** there may be no stored subscribers, or the database could not be queried. The homepage is designed to remain available in either case.
+To run only the database in Docker and the app on the host:
 
-## Current limitations and next steps
+```bash
+docker compose up -d db
+npm run db:deploy
+npm run dev
+```
 
-- The marketing product-board mockup and `/dashboard` workspace are static examples; task/board CRUD, teams, invitations, and task persistence are not implemented.
-- Social-proof names, testimonials, pricing, FAQ, benefits, and other marketing copy are static in `lib/content.ts`; there is no CMS.
-- Signup stores a subscriber but does not send confirmation email, verify ownership, or provide unsubscribe management.
-- The account system has no email verification, password reset, rate limiting, or abuse protection. Configure and review these before treating authentication as production-ready.
-- The `/api/register` handler currently returns caught error messages in its `400` response. Replace that behavior with safe public messages before exposing registration in production.
-- The registration page checks the eight-character password minimum, but `/api/register` itself currently checks only that a password is present. Add the minimum-length validation server-side before production use.
-- The public signup endpoints should be paired with rate limiting or another abuse-control mechanism before public production launch.
-- The visual proof/testimonial content is sample marketing content and should be replaced with approved, verified customer claims before publication.
-- The hero includes a TODO for replacing the illustrative product view with a real optimized screenshot.
+`docker compose down` stops the containers and keeps the named volumes. Removing the volumes deletes the database and the uploaded files.
 
-The email signup success response confirms database storage only. It does not claim that an email was sent.
+## File storage
+
+Uploaded profile pictures and task attachments are files on the server's disk, not database rows:
+
+| Folder | Docker volume | Contents |
+| --- | --- | --- |
+| `storage/avatars/` | `avatar-data` | Profile pictures |
+| `storage/attachments/` | `attachment-data` | Files attached to tasks |
+
+`storage/` is ignored by Git. Keep both volumes when recreating the app container, and back them up together with the database (`db-data` volume).
+
+## Security notes
+
+- Identity always comes from the server-side session; IDs sent by the browser are never trusted for access.
+- A project is reachable by its owner (personal) or its team's members (team); tasks and everything on them inherit that rule. Something outside your reach answers the same `404` as something that doesn't exist.
+- Passwords are hashed with bcrypt; sign-in and password checks are throttled per account; two-factor secrets are encrypted at rest.
+- Uploaded files are stored under random server-generated names, checked against their real content, and served only through authenticated routes.
+- No secret belongs in the repository: configuration is read from environment variables only.
+
+## Current limitations
+
+- No email verification or password reset, and email is sent only for team invitations.
+- Request throttling covers sign-in and password checks; the public signup endpoints (`/api/register`, `/api/subscribe`) have no rate limit of their own. Put the app behind a reverse proxy or platform that provides one before exposing it publicly.
+- Uploaded files live on the server's local disk, so running several app instances needs shared storage; there is no virus scanning.
+- The reminder scheduler runs inside the app process; reminders are in-app notifications only.
+- The marketing homepage's testimonials, pricing and product mockup are sample content.
+
+The dashboard's detailed limitations are listed in [DASHBOARD.md](DASHBOARD.md#current-limitations).

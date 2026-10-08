@@ -38,7 +38,7 @@ export default function Pricing() {
                 className={
                   featured
                     ? "mt-8 block rounded-lg bg-brand px-5 py-3 text-center font-semibold text-white transition-colors hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2"
-                    : "mt-8 block rounded-lg border border-brand px-5 py-3 text-center font-semibold text-brand transition-colors hover:bg-brand/10 focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 dark:focus:ring-offset-dark-surface"
+                    : "mt-8 block rounded-lg border border-brand px-5 py-3 text-center font-semibold text-brand-dark transition-colors hover:bg-brand/10 dark:text-blue-300 focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 dark:focus:ring-offset-dark-surface"
                 }
               >
                 Choose {plan.name}

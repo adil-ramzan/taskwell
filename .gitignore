@@ -1,6 +1,50 @@
-node_modules
-.next
-.env
-.env*.local
+# Dependencies
+node_modules/
+
+# Next.js build output and generated files
+.next/
+out/
+build/
 next-env.d.ts
+*.tsbuildinfo
+
+# Environment files and secrets (only the blank example is committed)
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Uploaded avatars and task attachments (kept on disk / in the avatar-data and attachment-data Docker volumes)
+/storage/
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Test output and screenshots
+coverage/
+playwright-report/
+test-results/
+shots/
+screenshots/
+/*.png
+
+# Local database files and dumps
+*.sql.gz
+*.dump
+*.sqlite
+*.db
+
+# Editor, OS and tool files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+.vercel
+.claude/
